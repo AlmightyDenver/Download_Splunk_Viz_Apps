@@ -7,14 +7,17 @@
 
 # Updates
 
-1.1.0 ver
+## 1.1.0 ver
+
 ~~- 기존 앱 이름 _viz_ 만 다운로드 -> 앱 이름 viz|Viz|visualization|Visualization 인 앱 다운로드~~
 
 - SplunkBase 페이지 바뀜
-  - splunk/developer 지원 앱 아닌 경우 warning 페이지 confirm download 추가
+- splunk/developer 지원 앱 아닌 경우 warning 페이지 confirm download 추가
 - Splunk selenium 4 업데이트로 코드 수정
 
-  1.2.0 ver
+</br>
+
+## 1.2.0 ver
 
 - 기존 splunkbase 페이지 html 다운로드 -> 다운로드 필요 x
 - Splunkbase id, pw, 검색 키워드, 크롬드라이버 디렉토리만 필요
@@ -27,23 +30,9 @@
 1. `python Download_Splunk__apps_120.py -i <SPLUNK_ID> -k <SEARCH_KEYWORD> -d <BROWSER_DRIVER_LOCATION>`
 2. Enter SPLUNK_PW
 
-</br></br>
+</br>
 
-# Command examples
+## Command examples
 
 `python Download_Splunk__apps_120.py -i myid -k viz -d /Users/denver/Documents/Tennis/chromedriver`
 → Download only apps that matches keyword
-
-</br></br>
-
-# Result Message
-
-# example)
-
-Download 31 Apps Completed Successfully.
-5 Exception Cccurred.
-Programme would be terminated after 30 seconds
-======================================================================%
-
-The results of search 'viz' on Splunkbase are 36 apps.
-To Complete Download wait 30 seconds
