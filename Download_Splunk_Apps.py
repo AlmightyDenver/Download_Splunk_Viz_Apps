@@ -6,27 +6,22 @@
 # Selenium = 4.5.0
 # Created By  : DenverAlmighty
 # Created Date: 2022-10-24
-# Updated Date : 2022-10-24
-# version = '2.0.0'
+# Updated Date : 2022-11-01
+# version = '1.2.0'
 # ---------------------------------------------------------------------------
 
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.common.by import By
-
-import re
-import codecs
-import getpass
 import sys
+import time
+import json
+import re
+import requests
+import argparse
+import getpass
+from selenium.webdriver.common.by import By
+from selenium import webdriver
 
-# # Splunk ID, PW
-# spkid = 'yjlee'
-# spkpw = ''
-# # file, chromedriver directory
-# html_file = '/Users/denver/Downloads/Splunkbase_viz.html'
-# # html_file = '/Users/denver/Downloads/Splunkbase_visualization.html'
-# chromedriver = '/Users/denver/Documents/Tennis/chromedriver'
 
-def initPage():
+def init_page():
     name = """            
  ____                _           _   
 |    \ ___ _ _ _ ___| |___ ___ _| |  
@@ -43,92 +38,153 @@ def initPage():
 | | | |- _|  | .'| . | . |_ -|       
  \_/|_|___|  |__,|  _|  _|___|       
                  |_| |_|             
+
 """
-    print(name)
+    sys.stdout.write(name)
+
+
+def draw_pb(pb, total_len, title):
+    perc = int(pb / total_len * 100)
+    done = int(perc / 2)
+    sys.stdout.write('\r %02d%% [%s%s] %s' % (perc, '=' * done, ' ' * (50-done), title))   
+    sys.stdout.flush()
+
+
+def input():
+    pw = getpass.getpass('Enter Splunk Password : ')
+    parser = argparse.ArgumentParser(description='Unzip .tgz file and edit apps.conf file', add_help=True)
+    parser.add_argument('--id', '-i', dest='id', help='(required) Enter Splunk ID')
+    parser.add_argument('--keyword', '-k', dest='keyword', help='(required) Enter Search Keyword')
+    parser.add_argument('--driverlocation', '-driver', dest='driver', help='(required) Enter Driver Dir')
+    args = parser.parse_args()
     
+    id = args.id
+    kw = args.keyword
+    driver = args.driver
+    
+    return id, pw, kw, driver
+
+
+def req_func(link, **kargs):
+    header = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36'}
+    try:
+        res = requests.get(link, headers=header)
+        if res.status_code != 200:
+            raise Exception('ERROR status_code : {res.status_code}')
+        else: 
+            return res.text
+    except Exception as e:
+        sys.stderr.write(e)
+        sys.exit()
+
+
+def get_download_links(keyword):
+    base_link = 'https://api.splunkbase.splunk.com/api/v2/apps?product=splunk&product_types=enterprise&'
+    # get apps total count
+    total = 0
+    link = '%squery=%s&offset=0' % (base_link, keyword)
+    res = req_func(link)
+    # str to dict
+    res_dict = json.loads(res)
+    total = res_dict['total']
+    # print(total)
+
+    # init offset, res_txt
+    offset = 0
+    res_txt = ''
+    res = {}
+    while offset < total:
+        link = '%sinclude=release&limit=100&query=%s&order=relevance&offset=%s' % (base_link, keyword, offset)
+        res[offset] = json.loads(req_func(link))
+        offset += 100
+        
+    return total, res
+
+
+def login(id, pw, driver):
+    # login
+    driver.get('https://login.splunk.com/')
+    # id input
+    driver.find_element(By.XPATH, '//*[@id="username"]').send_keys(id)
+    # click next button
+    driver.find_element(By.XPATH, '//*[@id="login-form"]/div[2]/div[4]/button').click()
+    # pw input
+    driver.find_element(By.XPATH, '//*[@id="password"]').send_keys(pw)
+    # click login button
+    driver.find_element(By.XPATH, '//*[@id="login-form"]/div[2]/div[5]/button').click()
+    # wait
+    driver.implicitly_wait(5)
+    time.sleep(5)
+    
+    return driver
+
+
 def main():
-    # Splunk ID, PW
-    spkid = input('Enter Splunk ID : ')
-    spkpw = getpass.getpass('Enter Splunk Password : ')
-    # file, chromedriver directory
-    html_file = input('Enter HTML File Location </my/dir/splunkbase.html> : ')
-    chromedriver = input('Enter ChromeDriver Location <my/dir/chromedriver> : ') 
-    
-    # open html file
-    f = codecs.open(html_file, "r", "utf-8")
-    r = f.read()
-    
-    # extract app links using regex
-    link_list = re.findall(r"https\:\/\/splunkbase\.splunk\.com\/app\/\d+", r)
-    link_list=sorted(list(set(link_list)))
+    # init error message to print at last
+    ERR_MSG = ''
 
-    # open chromedriver
-    driver = webdriver.Chrome(chromedriver)
-    driver.implicitly_wait(3)
+    #input
+    id, pw, kw, driver = input()
 
-    # reset flag
-    flag = 0
-    # reset download percent
-    dl = 0
+    # get app download links
+    total, res_dict = get_download_links(kw)
+
+    # extract appname and download link from dict
+    apps = []
+    for k in res_dict.keys():
+        tmp_lst = res_dict[k]['results']
+        for dic in tmp_lst:
+            apps.append({'app_name':dic['app_name'], 'link': dic['release']['path']})
+
+    # create driver
+    driver = webdriver.Chrome(driver)
+    # login
+    sys.stdout.write('Try to Login...')
+    driver = login(id, pw, driver)
+
+
+    # init count, progress bar, total length of links list
+    cnt = 0
+    pb = 0
+    total_len = len(apps)
     
-    # start download
-    for i in range(0, len(link_list)):
-        # downloading percent total length
-        link=link_list[i]
-        total_length = len(link_list)-1
+    # download
+    for i in range(total_len):
+        #draw progress bar
+        pb += 1
         
-        #except link 
-        if link == 'https://splunkbase.splunk.com/app/4537' or link == 'https://splunkbase.splunk.com/app/3205': 
+        dic = apps[i]
+        # check app_name matchs keyword or not
+        if not re.compile(kw, re.I).search(dic['app_name']):
+            ERR_MSG += 'ERROR App Name %s does not match %s\n' % (dic['app_name'], kw)
+            continue
+        # check link == None or not
+        elif dic['link'] == None:
+            ERR_MSG += 'ERORR invalid argument: "url" must be string   link : %s\n' %dic['link']
             continue
         
-        driver.get(link)
-                
-        #if appname not match *viz* OR *visualization* -> continue(do not download)
-        appname = driver.find_element(By.XPATH, '//*[@id="__next"]/div/div[3]/div[1]/div/div/div[2]/h1').text
-        appname_viz = re.findall(r"Viz|viz|visualization|Visualization", appname)
-        if not len(appname_viz):
+        # download
+        link = dic['link']
+        title = 'Started Download%s%s  %s' % ('.'*(pb%3), ' '*(3-pb%3), dic['app_name'] )
+        draw_pb(pb, total_len, title)
+        try:
+            driver.get(link)
+            cnt += 1
+        except Exception as e:
+            ERR_MSG += e
             continue
-        else:
-            # login at first time
-            if flag == 0:
-                flag = 1
-                # click "login to download" button
-                driver.find_element(By.XPATH, '//*[@id="__next"]/div/div[3]/div[2]/div/div[2]/div/button/span/span[2]').click()
-                driver.implicitly_wait(5)
-                # login
-                # id input
-                driver.find_element(By.XPATH, '//*[@id="username"]').send_keys(spkid)
-                # click next button
-                driver.find_element(By.XPATH, '//*[@id="login-form"]/div[2]/div[4]/button').click()
-                # pw input
-                driver.find_element(By.XPATH, '//*[@id="password"]').send_keys(spkpw)
-                #click login button
-                driver.find_element(By.XPATH, '//*[@id="login-form"]/div[2]/div[5]/button').click()
-                
-            # if button name != Download -> Do not click
-            button_value = driver.find_element(By.XPATH, '//*[@id="__next"]/div/div[3]/div[2]/div/div[2]/div/button/span/span[2]').text
-            if button_value != 'Download':
-                continue
-            try:
-                #click download button
-                element = driver.find_element(By.XPATH, '//*[@id="__next"]/div/div[3]/div[2]/div/div[2]/div/button').click()
-                
-                # + download perc
-                dl += 1
-                # Warning confirm download
-                if driver.find_element(By.XPATH, '/html/body/div[3]/div/div/div[1]/div[1]/div/div').text == 'Warning':
-                    driver.find_element(By.XPATH, '/html/body/div[3]/div/div/div[1]/div[3]/button[2]/span/span').click()
-                # accept license agreement
-                driver.find_element(By.XPATH, '/html/body/div[3]/div/div/div[1]/div[2]/div[2]').click()
-                driver.find_element(By.XPATH, '/html/body/div[3]/div/div/div[1]/div[2]/div[3]').click()
-                driver.find_element(By.XPATH, '/html/body/div[3]/div/div/div[1]/div[3]/a').click()
-                # print downloading percent
-                done = int(50 * dl / total_length)
-                sys.stdout.write("\r downloading [%s%s]" % ('=' * done, ' ' * (50-done)) )    
-                sys.stdout.flush()
-            except Exception as e:
-                print(e)
+
+        time.sleep(1)
+
+    # Complete Download
+    sys.stdout.write('%s\n%s\nDownload %d Apps Completed Successfully.\n\
+        %d Exception Occurred.\nProgramme would be terminated after 30 seconds\n%s'\
+        % (ERR_MSG, '=' * 70, cnt, total-cnt, '=' * 70))
+    time.sleep(30)
+    driver.quit()
+
+
 
 if __name__=='__main__':
-    initPage()
+    init_page()
     main()
