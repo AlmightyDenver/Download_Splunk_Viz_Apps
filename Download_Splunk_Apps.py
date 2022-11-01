@@ -33,11 +33,11 @@ def init_page():
 |__   | . | | | |   | '_|            
 |_____|  _|_|___|_|_|_,_|            
       |_|                                              
-     _                               
- _ _|_|___    ___ ___ ___ ___        
-| | | |- _|  | .'| . | . |_ -|       
- \_/|_|___|  |__,|  _|  _|___|       
-                 |_| |_|             
+
+ ___ ___ ___ ___        
+| .'| . | . |_ -|       
+|__,|  _|  _|___|       
+    |_| |_|             
 
 """
     sys.stdout.write(name)
@@ -134,12 +134,15 @@ def main():
     for k in res_dict.keys():
         tmp_lst = res_dict[k]['results']
         for dic in tmp_lst:
-            apps.append({'app_name':dic['app_name'], 'link': dic['release']['path']})
+            link = dic['release']['path']
+            if link == None:
+                link = 'https://splunkbase.splunk.com/app/%s/release/%s/download/' % (dic['id'], dic['release']['release_name'])
+            apps.append({'app_name':dic['app_name'], 'link': link})
 
     # create driver
     driver = webdriver.Chrome(driver)
     # login
-    sys.stdout.write('Try to Login...')
+    sys.stdout.write('Try to Login...\n')
     driver = login(id, pw, driver)
 
 
@@ -165,7 +168,7 @@ def main():
         
         # download
         link = dic['link']
-        title = 'Started Download%s%s  %s' % ('.'*(pb%3), ' '*(3-pb%3), dic['app_name'] )
+        title = 'Started Download%s%s  %s' % ('.'*(pb%3+1), ' '*(4-pb%3-1), dic['app_name'] )
         draw_pb(pb, total_len, title)
         try:
             driver.get(link)
@@ -177,7 +180,7 @@ def main():
         time.sleep(1)
 
     # Complete Download
-    sys.stdout.write('%s\n%s\nDownload %d Apps Completed Successfully.\n\
+    sys.stdout.write('\n%s\n%s\nDownload %d Apps Completed Successfully.\n\
         %d Exception Occurred.\nProgramme would be terminated after 30 seconds\n%s'\
         % (ERR_MSG, '=' * 70, cnt, total-cnt, '=' * 70))
     time.sleep(30)
